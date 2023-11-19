@@ -1,0 +1,150 @@
+#include <avr/io.h>
+#include <util/delay.h>
+#include <stdbool.h>
+
+#define Buttonpin PIND2
+#define outPin1 PORTD4
+
+#define sensorPin1 0
+#define lm35_pin 1
+
+#define greenLED1 PORTD6
+#define redLED1 PORTD7
+#define buzzar PORTB3
+
+#define ONValue1 390
+#define ONValue2 100
+
+bool buttonState;
+bool lastState;
+bool state = false;
+
+void setup() {
+  // Set pin modes
+  DDRD &= ~(1 << Buttonpin); // Set Buttonpin as input
+  DDRD |= (1 << outPin1);    // Set outPin1 as output
+  DDRD |= (1 << PD7) | (1 << PD6) | (1 << PD5) | (1 << PD3); // Set PD7, PD6, PD5, PD3 as output for LCD control
+  DDRB |= (1 << buzzar);     // Set buzzar pin as output
+  ADMUX = 0x40;              // Set ADC reference voltage to AVCC and ADC0 as input
+  ADCSRA = 0x87;             // Enable ADC, set ADC prescaler to 128
+  ADCSRB = 0x00;             // Set ADC Auto Trigger Source Selection to Free Running Mode
+  sei();                    // Enable global interrupts
+}
+
+void loop() {
+  int reading = PIND & (1 << Buttonpin);
+  if (reading == 0 && lastState == 1) {
+    _delay_ms(10);
+    if ((PIND & (1 << Buttonpin)) == 0)
+      state = !state;
+  }
+  PORTD = (PORTD & ~(1 << outPin1)) | (state << outPin1);
+
+  if (state) {
+    PORTD |= (1 << PD7); // Power on indicator
+    _delay_ms(10);
+
+    int sensorValue1 = analogRead(sensorPin1);
+    int sensorValue2 = analogRead(lm35_pin);
+    serial_print("SensorValue1 = ");
+    serial_print_number(sensorValue1);
+
+    float temp_val;
+    sensorValue2 = analogRead(lm35_pin);
+    temp_val = (sensorValue2 * 4.8828125);
+    temp_val = (temp_val / 10);
+    serial_print("Temperature = ");
+    serial_print_number(temp_val);
+    serial_puts(" Degree Celsius");
+    _delay_ms(1000);
+
+    if ((sensorValue1 < ONValue1) && (temp_val < ONValue2)) {
+      PORTD |= (1 << PD6); // Set greenLED1 pin high
+      PORTD &= ~(1 << PD5); // Set redLED1 pin low
+      PORTB &= ~(1 << buzzar); // Set buzzar pin low
+      serial_puts("Safe");
+
+      // Display safe message on the LCD
+      lcd_clear();
+      lcd_puts("Safe");
+
+      // Send safe SMS notification
+      sendSMS("Safety System: Safe");
+    } else {
+      PORTD &= ~(1 << PD6); // Set greenLED1 pin low
+      PORTD |= (1 << PD5); // Set redLED1 pin high
+      PORTB |= (1 << buzzar); // Set buzzar pin high
+      _delay_ms(300);
+      PORTB &= ~(1 << buzzar); // Set buzzar pin low
+      _delay_ms(300);
+      PORTB |= (1 << buzzar); // Set buzzar pin high
+      _delay_ms(300);
+      PORTB &= ~(1 << buzzar); // Set buzzar pin low
+      _delay_ms(1000);
+
+      serial_puts("Danger");
+
+      // Display danger message on the LCD
+      lcd_clear();
+      lcd_puts("Danger");
+
+      // Send danger SMS notification
+      sendSMS("Safety System: Danger");
+    }
+  }
+
+  if (!state) {
+    serial_puts("Off");
+    PORTD &= ~(1 << PD7); // Power on indicator off
+    PORTD &= ~(1 << PD6); // Set greenLED1 pin low
+    PORTD &= ~(1 << PD5); // Set redLED1 pin low
+    PORTB &= ~(1 << buzzar); // Set buzzar pin low
+
+    // Display off message on the LCD
+    lcd_clear();
+    lcd_puts("Off");
+
+    // Send off SMS notification
+    sendSMS("Safety System: Off");
+  }
+  lastState = reading;
+}
+
+void sendSMS(const char* message) {
+  // TODO: Implement GSM communication to send SMS
+}
+
+void lcd_init() {
+  // TODO: Initialize LCD
+}
+
+void lcd_clear() {
+  // TODO: Clear LCD
+}
+
+void lcd_puts(const char* str) {
+  // TODO: Print string on LCD
+}
+
+void serial_print(const char* str) {
+  // TODO: Print string to Serial
+}
+
+void serial_print_number(int num) {
+  // TODO: Print number to Serial
+}
+
+void serial_puts(const char* str) {
+  // TODO: Print string with new line to Serial
+}
+
+void serial_putc(char c) {
+  // TODO: Print character to Serial
+}
+
+int analogRead(uint8_t pin) {
+  ADMUX = (ADMUX & 0xF8) | (pin & 0x07);  // Select ADC channel with pin
+  ADCSRA |= (1 << ADSC);                   // Start ADC conversion
+  while (ADCSRA & (1 << ADSC));            // Wait for conversion to complete
+  return ADC;                              // Return ADC value
+}
